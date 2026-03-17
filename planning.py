@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from collections import defaultdict
 
 from openpyxl import load_workbook
 from crop import Crop, load_crops
@@ -168,6 +169,17 @@ def extract_planning(crops_database):
     return crops_implantations_sorted
 
 
+def extract_harvest(crops_implantations):
+    harvest = defaultdict(list)
+    for week in range(1, 52):
+        harvest[week] = []
+    for crop_implantation in crops_implantations:
+        for week in range(crop_implantation.harvest_start, crop_implantation.harvest_end):
+            if crop_implantation.crop not in harvest[week]:
+                harvest[week].append(crop_implantation.crop)
+    return {k: v for k, v in harvest.items() if v}
+
+
 def reorder_by_int_attr(objects, attr, reverse=False):
     return sorted(objects, key=lambda obj: getattr(obj, attr), reverse=reverse)
 
@@ -183,13 +195,13 @@ def generate_html(html_data, template, filename, title):
 def main():
     crops_database = load_crops()
     generate_html(html_data=crops_database, template="template_itk.html", filename=ITK_OUTPUT_FILE, title="Itinéraires techniques")
-    for crop in crops_database:
-        print(crop)
 
     crops_implantations = extract_planning(crops_database)
-    for crop_impl in crops_implantations:
-        print(crop_impl)
     generate_html(html_data=crops_implantations, template="template_tasks.html", filename=TASKS_OUTPUT_FILE, title="Tâches")
+
+    harvest = extract_harvest(crops_implantations)
+    for week in harvest:
+        print(f" w{week} : {", ".join(harvest[week])}")
 
 
 if __name__ == "__main__":

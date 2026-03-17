@@ -11,7 +11,10 @@ class Crop:
     def __init__(self, **entries):
 
         for k, v in entries.items():
-            setattr(self, k, v)
+            try:
+                setattr(self, k, float(v))
+            except ValueError:
+                setattr(self, k, v)
 
     def to_dict(self):
         return self.__dict__
@@ -44,7 +47,7 @@ def transform_tasks(crop_obj):
 
             if hasattr(crop_obj, days_key):
                 days = getattr(crop_obj, days_key)
-                if type(days) is str and days != "":
+                if days != "":
                     new_key = f"Tâche J={int(float(days))}"
                     new_attrs[new_key] = task
 
@@ -77,8 +80,6 @@ def load_crops():
         if crop_value in ["", "-"]:
             continue
         new_crop = Crop(**data)
-        print(crop_value)
-
         filtered_itk = [crop_itk for crop_itk in crops_itk if crop_value == crop_itk["name"]]
         if filtered_itk:
             for k, v in filtered_itk[0].items():
