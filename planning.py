@@ -1,6 +1,10 @@
 import json
 from pathlib import Path
 from collections import defaultdict
+from typing import List
+
+from jinja2 import Template
+from datetime import datetime
 
 from openpyxl import load_workbook
 from crop import Crop, load_crops
@@ -9,6 +13,7 @@ import copy
 INPUT_FILE = r"H:\My Drive\3.PDC\PDC.xlsx"
 ITK_OUTPUT_FILE = r"H:\My Drive\3.PDC\export\itk.html"
 TASKS_OUTPUT_FILE = r"H:\My Drive\3.PDC\export\taches.html"
+CAL_OUTPUT_FILE = r"H:\My Drive\3.PDC\export\calendar.html"
 
 
 class CropImplantation(Crop):
@@ -52,7 +57,7 @@ class CropImplantation(Crop):
         return val
 
 
-def extract_planning(crops_database):
+def extract_planning(crops_database) -> List[CropImplantation]:
     print("Parsing planning...")
     wb = load_workbook(INPUT_FILE, data_only=True)
     wb.active = wb['PDC']
@@ -169,6 +174,74 @@ def extract_planning(crops_database):
     return crops_implantations_sorted
 
 
+def generate_cal_html(harvest: List[CropImplantation], template_file="template_cal.html", output_file="calendar.html"):
+    current_week = datetime.now().isocalendar()[1]
+    all_weeks = set()
+
+    for c in harvest:
+        all_weeks.update(range(c.grow_start, c.grow_end + 1))
+        all_weeks.update(range(c.harvest_start, c.harvest_end + 1))
+
+    weeks = sorted(all_weeks)
+    matrix = []
+
+    for c in harvest:
+        row = []
+        for w in weeks:
+            if c.harvest_start <= w <= c.harvest_end:
+                row.append("R")
+            elif c.grow_start <= w <= c.grow_end:
+                row.append("G")
+            else:
+                row.append("")
+
+        matrix.append({
+            "label": f"{c.block}-{c.garden}-{c.bed}",
+            "block": c.block,
+            "garden": c.garden,
+            "bed": c.bed,
+            "weeks": row
+        })
+
+    # cultures à récolter cette semaine
+    current_harvest = [
+        f"{c.block}-{c.garden}-{c.bed}"
+        for c in harvest
+        if c.harvest_start <= current_week <= c.harvest_end
+    ]
+
+    # render HTML
+    with open(template_file, encoding="utf-8") as f:
+        template = Template(f.read())
+
+    data = [
+        {
+            "block": c.block,
+            "garden": c.garden,
+            "bed": c.bed,
+            "label": c.crop,
+            "grow_start": c.grow_start,
+            "grow_end": c.grow_end,
+            "harvest_start": c.harvest_start,
+            "harvest_end": c.harvest_end
+        }
+        for c in harvest
+    ]
+    data = sorted(
+        data,
+        key=lambda x: (x["block"], x["garden"], x["bed"])
+    )
+    html = template.render(
+        data=data,
+        weeks=weeks,
+        current_week=current_week
+    )
+
+    with open(output_file, "w", encoding="utf-8") as f:
+        f.write(html)
+
+    print(f"HTML généré : {output_file}")
+
 def extract_harvest(crops_implantations):
     harvest = defaultdict(list)
     for week in range(1, 52):
@@ -184,7 +257,7 @@ def reorder_by_int_attr(objects, attr, reverse=False):
     return sorted(objects, key=lambda obj: getattr(obj, attr), reverse=reverse)
 
 
-def generate_html(html_data, template, filename, title):
+def generate_html(html_data, template, filename, title="Tâches"):
     template = Path(template).read_text(encoding="utf8")
     data = [c.to_dict() for c in html_data]
     json_data = json.dumps(data, ensure_ascii=False)
@@ -197,7 +270,8 @@ def main():
     generate_html(html_data=crops_database, template="template_itk.html", filename=ITK_OUTPUT_FILE, title="Itinéraires techniques")
 
     crops_implantations = extract_planning(crops_database)
-    generate_html(html_data=crops_implantations, template="template_tasks.html", filename=TASKS_OUTPUT_FILE, title="Tâches")
+    generate_html(html_data=crops_implantations, template="template_tasks.html", filename=TASKS_OUTPUT_FILE, title="Taches")
+    generate_cal_html(crops_implantations, template_file="template_cal.html", output_file=CAL_OUTPUT_FILE)
 
     harvest = extract_harvest(crops_implantations)
     for week in harvest:
